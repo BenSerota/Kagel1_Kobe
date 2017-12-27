@@ -6,7 +6,6 @@ from sklearn.feature_selection import RFE, RFECV, VarianceThreshold
 from sklearn.model_selection import cross_val_score
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
 import matplotlib.pyplot as plt
 
 # Suppress warnings
@@ -107,7 +106,7 @@ Y_cols = [pred_var]
 # rawdata = rawdata.join(pcadata)
 
 # Split data
-test_rows = pd.isnull(rawdata[pred_var])	        # gives the indices of all the rows to predict
+test_rows = pd.isnull(rawdata[pred_var])			# gives the indeces of all the rows to predict
 traindata = rawdata[~test_rows]
 evaldata = rawdata[test_rows]
 preddata = evaldata[pred_cols]						# what we hand-in as output
@@ -116,50 +115,28 @@ preddata = evaldata[pred_cols]						# what we hand-in as output
 X0 = traindata[X_cols]
 Y0 = np.ravel(traindata[Y_cols])
 
-# # Plot rankings
-# lr = LogisticRegression()
-# rfe = RFE(lr, 1)
-# rfe = rfe.fit(X0, Y0)
-# x_axis = np.arange(len(rfe.ranking_))
-# plt.bar(x_axis, rfe.ranking_)
-# plt.xticks(x_axis, X_cols, rotation = 'vertical')
-# plt.show()
-# X_cols_rfe = []
-
-# # Choose a subset of features by recursive features elimination
-# lr = LogisticRegression()
-# n_features = 20
-# rfe = RFE(lr, n_features)  # chooses the best N features from which to do LR
-# rfe = rfe.fit(X0, Y0)
-# X_cols_rfe = [X_cols[i] for i in range(len(X_cols)) if rfe.support_[i]]
-# print('RFE chosen features: ', X_cols_rfe)
-# print(len(X_cols_rfe))
-X_cols_rfe = []
-
-# Choose features by cross-validation based recursive features elimination
+# Set the model
 lr = LogisticRegression()
-rfecv = RFECV(estimator = lr, cv = 5, scoring = 'neg_log_loss')
-rfecv.fit(X0, Y0)
-X_cols_rfecv = [X_cols[i] for i in range(len(X_cols)) if rfecv.support_[i]]
-print('RFECV chosen features: ', X_cols_rfecv)
-print(len(X_cols_rfecv))
-# X_cols_rfecv = []
 
-# Include the first features used by a decision tree classifier
-clf_mid = 0.05
-n_features = 15
-clf = DecisionTreeClassifier(min_impurity_decrease = clf_mid)
-clf = clf.fit(X0, Y0)
-# M = np.mean(clf.feature_importances_)
-# X_cols_dtc = [X_cols[i] for i in range(len(X_cols))
-#               if clf.feature_importances_[i] >= M]
-feature_df = pd.DataFrame(clf.feature_importances_,
-                          index = X_cols,
-                          columns = ["importance"])
-X_cols_dtc = feature_df.sort_values("importance", ascending = False).head(
-		n_features).index
-print('DTC chosen features: ', X_cols_dtc)
-print(len(X_cols_dtc))
+# Choose a subset of features by recursive features elimination
+n_features = 20
+rfe = RFE(lr, n_features) 	# chooses the best N features from which to do LR
+rfe = rfe.fit(X0, Y0)
+X_cols_rfe = [X_cols[i] for i in range(len(X_cols)) if rfe.support_[i]]
+print('RFE chosen features: ', X_cols_rfe)
+print(len(X_cols_rfe))
+plt.bar(np.arange(len(rfe.ranking_)), rfe.ranking_)
+plt.xticks(X_cols)
+
+# # Choose features by cross-validation based recursive features elimination
+# DECIDED NOT TO INCLUDE RFE, AS PREDICTION WAS BETTER WITH 20 FEATURES
+
+# rfecv = RFECV(estimator = lr, cv = 3, scoring = 'neg_log_loss')
+# rfecv.fit(X0, Y0)
+# X_cols_rfecv = [X_cols[i] for i in range(len(X_cols)) if rfecv.support_[i]]
+# print('RFECV chosen features: ', X_cols_rfecv)
+# print(len(X_cols_rfecv))
+X_cols_rfecv = []
 
 # Setting Variance Threshold
 # Choose all features with high enough variance
@@ -170,7 +147,6 @@ vt = vt.fit(X0)
 X_cols_vt = [X_cols[i] for i in range(len(X_cols)) if vt.variances_[i] > th]
 print('VT chosen features: ', X_cols_vt)
 print(len(X_cols_vt))
-# X_cols_vt = []
 
 # LDA
 lda = LinearDiscriminantAnalysis()
@@ -179,20 +155,18 @@ X0_lda = lda.transform(X0)
 
 # Filter columns
 # unique is just for to not calculate one param multiple times
-X_cols_f = np.unique(np.hstack([X_cols_rfe, X_cols_rfecv,
-                                X_cols_dtc, X_cols_vt]))
+X_cols_f = np.unique(np.hstack([X_cols_rfe, X_cols_rfecv, X_cols_vt]))
 print('Final chosen features: ', X_cols_f)
 print(len(X_cols_f))
 X0 = X0[X_cols_f]
 X0.loc[:, 'LDA'] = X0_lda		# adding value of single LDA dim
 
 # Test the model
-lr = LogisticRegression()
 scores = -cross_val_score(lr, X0, Y0, cv = 10, scoring = 'neg_log_loss')
 print('CV log-loss: ', np.mean(scores), '+/-', np.std(scores))
 
 # For test only - Leakage problem
-if quick_test: 	#(with leakage, quick and dirty)
+if quick_test: 	#(with leakage = quick and dirty)
 	
 	# Fit the model
 	lr = LogisticRegression()
@@ -204,6 +178,7 @@ if quick_test: 	#(with leakage, quick and dirty)
 	X.loc[:, 'LDA'] = Xlda
 	Y = lr.predict_proba(X)  # without _proba , this would have given 0/1
 	preddata.loc[:, pred_var] = Y[:, 1]
+
 
 # Leakage handle
 else:		#without leakage
@@ -227,7 +202,7 @@ else:		#without leakage
 		Xt.loc[:, 'LDA'] = lda.transform(traindata.loc[ind_t, X_cols])
 		lr = LogisticRegression()
 		lr = lr.fit(Xt, Yt)  # trains on training data. Here the flesh lies.
-
+		
 		# Generate the model's prediction
 		X = evaldata.loc[[t], X_cols_f]
 		# using the LDA axis found, generate and add "LDA value"
