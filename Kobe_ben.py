@@ -218,3 +218,6 @@ preddata.to_csv(resultsfilename, header = True, index = False)
 
 
 # plotting:
+# scatter shots
+plt.figure(); draw_court(outer_lines=True); plt.ylim(-60,440); plt.xlim(270,-270); plt.title('Test-shots prediction :intensity = probability')
+plt.scatter(x=evaldata['loc_x'],y=evaldata['loc_y'], # c=Y[],s=40,cmap='hsv',alpha=0.1)
