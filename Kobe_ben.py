@@ -16,7 +16,7 @@ from matplotlib.patches import Circle, Rectangle, Arc
 pd.options.mode.chained_assignment = None  # default='warn'
 
 # Set this to True to ignore leakage and get a faster code
-quick_test = False
+quick_test = True #False
 
 datadir = 'Data'
 datafilename = os.path.join(datadir, 'data.csv')
