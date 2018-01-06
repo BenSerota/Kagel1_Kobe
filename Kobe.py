@@ -16,11 +16,12 @@ from matplotlib.patches import Circle, Rectangle, Arc
 pd.options.mode.chained_assignment = None  # default='warn'
 
 # Set this to True to ignore leakage and get a faster code
-quick_test = False
+quick_test = True
 
 datadir = 'Data'
 datafilename = os.path.join(datadir, 'data.csv')
 resultsfilename = os.path.join(datadir, 'results.csv')
+fullresultsfilename = os.path.join(datadir, 'results_full.csv')
 
 # Load data
 rawdata = pd.read_csv(datafilename)
@@ -142,21 +143,22 @@ Y_cols = [pred_var]
 test_rows = pd.isnull(rawdata[pred_var])    # gives indices of rows to predict
 traindata = rawdata[~test_rows]
 evaldata = rawdata[test_rows]
-preddata = evaldata[pred_cols]              # what we hand-in as output
 
 # Prepare the training data
 X0 = traindata[X_cols]
 Y0 = np.ravel(traindata[Y_cols])
 
-# # Plot rankings
-# lr = LogisticRegression()
-# rfe = RFE(lr, 1)
-# rfe = rfe.fit(X0, Y0)
-# x_axis = np.arange(len(rfe.ranking_))
-# plt.bar(x_axis, rfe.ranking_)
-# plt.xticks(x_axis, X_cols, rotation = 'vertical')
-# plt.show()
-# X_cols_rfe = []
+# Plot RFE rankings
+lr = LogisticRegression()
+rfe = RFE(lr, 1)
+rfe = rfe.fit(X0, Y0)
+feature_df = pd.DataFrame(rfe.ranking_, index = X_cols, columns = ["ranking"])
+feature_df.sort_values("ranking", inplace = True)
+plt.figure()
+x_axis = np.arange(len(feature_df))
+plt.bar(x_axis, feature_df["ranking"])
+plt.xticks(x_axis, feature_df.index, rotation = 'vertical')
+plt.show()
 
 # Choose a subset of features by recursive features elimination
 lr = LogisticRegression()
@@ -178,22 +180,22 @@ print(len(X_cols_rfe))
 # print(len(X_cols_rfecv))
 X_cols_rfecv = []
 
-# Include the first n features used by a decision tree classifier
-dtc_mid = 0.05
-n_features = 10     # max(len(X_cols_rfe), len(X_cols_rfecv))
-dtc = DecisionTreeClassifier(min_impurity_decrease = dtc_mid)
-dtc.fit(X0, Y0)
-# M = np.mean(clf.feature_importances_)
-# X_cols_dtc = [X_cols[i] for i in range(len(X_cols))
-#               if clf.feature_importances_[i] >= M]
-feature_df = pd.DataFrame(dtc.feature_importances_,
-                          index = X_cols,
-                          columns = ["importance"])
-X_cols_dtc = feature_df.sort_values("importance", ascending = False).head(
-		n_features).index
-print('DTC chosen features: ', X_cols_dtc)
-print(len(X_cols_dtc))
-# X_cols_dtc = []
+# # Include the first n features used by a decision tree classifier
+# dtc_mid = 0.05
+# n_features = 10     # max(len(X_cols_rfe), len(X_cols_rfecv))
+# dtc = DecisionTreeClassifier(min_impurity_decrease = dtc_mid)
+# dtc.fit(X0, Y0)
+# # M = np.mean(clf.feature_importances_)
+# # X_cols_dtc = [X_cols[i] for i in range(len(X_cols))
+# #               if clf.feature_importances_[i] >= M]
+# feature_df = pd.DataFrame(dtc.feature_importances_,
+#                           index = X_cols,
+#                           columns = ["importance"])
+# X_cols_dtc = feature_df.sort_values("importance", ascending = False).head(
+# 		n_features).index
+# print('DTC chosen features: ', X_cols_dtc)
+# print(len(X_cols_dtc))
+X_cols_dtc = []
 
 # # Choose features with high mutual information with the predicted variable
 # n_features = max(len(X_cols_rfe), len(X_cols_rfecv))
@@ -221,10 +223,21 @@ lda.fit(X0, Y0)
 X0_lda = lda.transform(X0)
 
 # Decision tree regressor
-dtr_mid = 0.005
+dtr_mid = 0.0005
 dtr = DecisionTreeRegressor(min_impurity_decrease = dtr_mid)
 dtr.fit(X0, Y0)
 X0_dtr = dtr.predict(X0)
+
+# Plot Regression Tree features' importances
+feature_df = pd.DataFrame(dtr.feature_importances_,
+                          index = X_cols,
+                          columns = ["importance"])
+feature_df.sort_values("importance", ascending = False, inplace = True)
+plt.figure()
+x_axis = np.arange(len(feature_df))
+plt.bar(x_axis, feature_df["importance"])
+plt.xticks(x_axis, feature_df.index, rotation = 'vertical')
+plt.show()
 
 # Filter columns
 # unique is just to not calculate one param multiple times
@@ -255,7 +268,7 @@ if quick_test: 	# (with leakage, quick and dirty)
 	X.loc[:, 'LDA'] = Xlda
 	X.loc[:, 'DTR'] = Xdtr
 	Y = lr.predict_proba(X)  # without _proba , this would have given 0/1
-	preddata.loc[:, pred_var] = Y[:, 1]
+	evaldata.loc[:, pred_var] = Y[:, 1]
 
 # Leakage handle
 else:		# without leakage
@@ -268,7 +281,7 @@ else:		# without leakage
 		ind = traindata.index
 		ind_t = ind[ind < t]
 		if len(ind_t) == 0:		# if row picked is first
-			preddata.loc[t, pred_var] = 0.5     # For the first shot, just guess
+			evaldata.loc[t, pred_var] = 0.5     # For the first shot, just guess
 			continue
 		Xt = traindata.loc[ind_t, X_cols_f]
 		Yt = np.ravel(traindata.loc[ind_t, Y_cols])
@@ -289,10 +302,15 @@ else:		# without leakage
 		X.loc[:, 'LDA'] = lda.transform(evaldata.loc[[t], X_cols])
 		X.loc[:, 'DTR'] = dtr.predict(evaldata.loc[[t], X_cols])
 		Y = lr.predict_proba(X)     # without _proba , this would have given 0/1
-		preddata.loc[t, pred_var] = Y[0, 1]
+		evaldata.loc[t, pred_var] = Y[0, 1]
 		
 		# Display progress
 		c = c + 1
 		print(t, ': ', c, '/', C)
-		
+
+# For future plots
+evaldata.to_csv(fullresultsfilename, header = True, index = False)
+
+# what we hand-in as output
+preddata = evaldata[pred_cols]
 preddata.to_csv(resultsfilename, header = True, index = False)
