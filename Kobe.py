@@ -7,10 +7,10 @@ from sklearn.feature_selection import RFE, RFECV, VarianceThreshold, \
 from sklearn.model_selection import cross_val_score
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor, \
+	export_graphviz
 import matplotlib.pyplot as plt
-
-from matplotlib.patches import Circle, Rectangle, Arc
+import graphviz
 
 # Suppress warnings
 pd.options.mode.chained_assignment = None  # default='warn'
@@ -158,7 +158,8 @@ plt.figure()
 x_axis = np.arange(len(feature_df))
 plt.bar(x_axis, feature_df["ranking"])
 plt.xticks(x_axis, feature_df.index, rotation = 'vertical')
-plt.show()
+plt.xlabel("Feature")
+plt.ylabel("RFE Ranking")
 
 # Choose a subset of features by recursive features elimination
 lr = LogisticRegression()
@@ -223,7 +224,7 @@ lda.fit(X0, Y0)
 X0_lda = lda.transform(X0)
 
 # Decision tree regressor
-dtr_mid = 0.0005
+dtr_mid = 0.005
 dtr = DecisionTreeRegressor(min_impurity_decrease = dtr_mid)
 dtr.fit(X0, Y0)
 X0_dtr = dtr.predict(X0)
@@ -233,11 +234,18 @@ feature_df = pd.DataFrame(dtr.feature_importances_,
                           index = X_cols,
                           columns = ["importance"])
 feature_df.sort_values("importance", ascending = False, inplace = True)
+feature_df = feature_df.head(10)
 plt.figure()
 x_axis = np.arange(len(feature_df))
 plt.bar(x_axis, feature_df["importance"])
 plt.xticks(x_axis, feature_df.index, rotation = 'vertical')
-plt.show()
+plt.xlabel("Feature")
+plt.ylabel("Regression Tree's Gini Index")
+dot_data = export_graphviz(dtr, out_file = None, feature_names = X_cols,
+                           filled = True, rounded = True,
+                           special_characters = True)
+graph = graphviz.Source(dot_data, format = 'png')
+graph.render("RegressionTree")
 
 # Filter columns
 # unique is just to not calculate one param multiple times
@@ -246,7 +254,7 @@ X_cols_f = np.unique(np.hstack([X_cols_rfe, X_cols_rfecv,
 print('Final chosen features: ', X_cols_f)
 print(len(X_cols_f))
 X0 = X0[X_cols_f]
-X0.loc[:, 'LDA'] = X0_lda		# adding value of single LDA dim
+X0.loc[:, 'LDA'] = X0_lda		# adding value of a single LDA dim
 X0.loc[:, 'DTR'] = X0_dtr       # adding value of DTR prediction
 
 # Test the model
@@ -314,3 +322,5 @@ evaldata.to_csv(fullresultsfilename, header = True, index = False)
 # what we hand-in as output
 preddata = evaldata[pred_cols]
 preddata.to_csv(resultsfilename, header = True, index = False)
+
+plt.show()
